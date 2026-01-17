@@ -4,4 +4,56 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  - pwsh: 
+- pwsh: |
+    Write-Host "🚀 Master pipeline - startar child pipelines parallellt"
+
+    $organization = "$(System.CollectionUri)"
+    $project = "$(System.TeamProject)"
+
+    # Lista med child pipelines
+    $pipelineIds = @(6, 8, 9)
+
+    # Lista för att spara info om varje startad pipeline
+    $startedPipelines = @()
+
+    foreach ($pipelineId in $pipelineIds) {
+
+        Write-Host "➡️ Startar pipeline $pipelineId"
+
+        $url = "${organization}${project}/_apis/pipelines/$pipelineId/runs?api-version=7.0"
+
+        $headers = @{
+            Authorization = "Bearer $(System.AccessToken)"
+            "Content-Type" = "application/json"
+        }
+
+        # Starta pipeline och få tillbaka run-information
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $url `
+            -Headers $headers `
+            -Body "{}"
+
+        # Spara metadata
+        $startedPipelines += [PSCustomObject]@{
+            PipelineId = $pipelineId
+            RunId      = $response.id
+            WebUrl     = $response._links.web.href
+        }
+
+        Write-Host "✅ Pipeline $pipelineId startad (RunId: $($response.id))"
+    }
+
+    Write-Host ""
+    Write-Host "📋 Sammanfattning – startade pipelines:"
+    Write-Host "-------------------------------------"
+
+    foreach ($p in $startedPipelines) {
+        Write-Host "PipelineId: $($p.PipelineId)"
+        Write-Host "RunId:      $($p.RunId)"
+        Write-Host "Url:        $($p.WebUrl)"
+        Write-Host ""
+    }
+
+    Write-Host "🎉 Alla pipelines är startade och kör nu oberoende av varandra"
+  displayName: "Trigger child pipelines (parallel + tracking)"
