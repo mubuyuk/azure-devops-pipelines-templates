@@ -1,0 +1,14 @@
+[
+  {
+    "name": "repo-app-a",
+    "pipelineId": 10
+  },
+  {
+    "name": "repo-app-b",
+    "pipelineId": 11
+  },
+  {
+    "name": "repo-app-c",
+    "pipelineId": 12
+  }
+]
