@@ -1,0 +1,136 @@
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- pwsh: |
+    Write-Host "Master pipeline - startar child pipelines parallellt"
+
+    $organization = "$(System.CollectionUri)"
+    $project      = "$(System.TeamProject)"
+
+    # Läs pipeline-konfiguration
+    $pipelines = Get-Content "pipelines.json" | ConvertFrom-Json
+
+    # Lista för spårning
+    $startedPipelines = @()
+
+    # =========================
+    # FAS 1 - STARTA PIPELINES
+    # =========================
+    foreach ($pipeline in $pipelines) {
+
+        $name       = $pipeline.name
+        $pipelineId = $pipeline.pipelineId
+
+        Write-Host "➡️ Startar pipeline: $name (Id: $pipelineId)"
+
+        $url = "${organization}${project}/_apis/pipelines/$pipelineId/runs?api-version=7.0"
+
+        $headers = @{
+            Authorization = "Bearer $(System.AccessToken)"
+            "Content-Type" = "application/json"
+        }
+
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $url `
+            -Headers $headers `
+            -Body "{}"
+
+        $startedPipelines += [PSCustomObject]@{
+            Name       = $name
+            PipelineId = $pipelineId
+            RunId      = $response.id
+            WebUrl     = $response._links.web.href
+            State      = "inProgress"
+            Result     = $null
+        }
+
+        Write-Host "✅ $name startad (RunId: $($response.id))"
+    }
+
+    # =========================
+    # FAS 2 - POLLING / OBSERVERA
+    # =========================
+    Write-Host ""
+    Write-Host "Observerar child pipelines (polling)"
+    Write-Host "-------------------------------------"
+
+    $pollIntervalSeconds = 10
+    $maxWaitMinutes = 10
+    $maxIterations = ($maxWaitMinutes * 60) / $pollIntervalSeconds
+
+    for ($i = 1; $i -le $maxIterations; $i++) {
+
+        $allCompleted = $true
+
+        foreach ($p in $startedPipelines) {
+
+            if ($p.State -eq "completed") {
+                continue
+            }
+
+            $statusUrl = "${organization}${project}/_apis/pipelines/$($p.PipelineId)/runs/$($p.RunId)?api-version=7.0"
+
+            $statusResponse = Invoke-RestMethod `
+                -Method Get `
+                -Uri $statusUrl `
+                -Headers $headers
+
+            $p.State  = $statusResponse.state
+            $p.Result = $statusResponse.result
+
+            if ($p.State -ne "completed") {
+                $allCompleted = $false
+            }
+        }
+
+        if ($allCompleted) {
+            Write-Host "✅ Alla pipelines är klara"
+            break
+        }
+
+        Write-Host "⏳ Väntar... ($i / $maxIterations)"
+        Start-Sleep -Seconds $pollIntervalSeconds
+    }
+
+    # =========================
+    # FAS 3 - RAPPORTERING
+    # =========================
+    Write-Host ""
+    Write-Host "📊 Resultat - child pipelines"
+    Write-Host "-----------------------------"
+
+    $failed = @()
+
+    foreach ($p in $startedPipelines) {
+
+        if ($p.Result -eq "succeeded") {
+            Write-Host "✔ $($p.Name) - succeeded"
+        }
+        elseif ($p.Result -eq "failed") {
+            Write-Host "❌ $($p.Name) - FAILED"
+            $failed += $p
+        }
+        else {
+            Write-Host "⚠ $($p.Name) - state: $($p.State), result: $($p.Result)"
+        }
+    }
+
+    if ($failed.Count -gt 0) {
+        Write-Host ""
+        Write-Host "❗ Misslyckade pipelines:"
+        foreach ($f in $failed) {
+            Write-Host "- $($f.Name) → $($f.WebUrl)"
+        }
+    } else {
+        Write-Host ""
+        Write-Host "Alla pipelines lyckades"
+    }
+
+    Write-Host ""
+    Write-Host "ℹ Master-pipelinen avslutas utan att påverka child-resultat"
+
+  displayName: "Trigger child pipelines (parallel + tracking)"
