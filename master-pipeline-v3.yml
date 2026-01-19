@@ -1,0 +1,101 @@
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- pwsh: |
+    Write-Host "Master pipeline – orkestrerar child pipelines"
+
+    # --------------------------------
+    # Azure DevOps-kontext
+    # --------------------------------
+    $orgUrl = "$(System.CollectionUri)".TrimEnd('/')
+    $projectName = "$(System.TeamProject)"
+
+    # --------------------------------
+    # Headers för REST API
+    # --------------------------------
+    $headers = @{
+        Authorization = "Bearer $(System.AccessToken)"
+        "Content-Type" = "application/json"
+    }
+
+    # --------------------------------
+    # Läs intent från pipelines.json
+    # --------------------------------
+    $pipelines = Get-Content "pipelines.json" | ConvertFrom-Json
+    $startedPipelines = @()
+
+    foreach ($pipeline in $pipelines) {
+
+        # -------- Intent (JSON) --------
+        if (-not $pipeline.enabled) {
+            Write-Host "Hoppar över $($pipeline.pipelineName) (enabled=false)"
+            continue
+        }
+
+        $pipelineId  = $pipeline.pipelineId
+        $pipelineName = $pipeline.pipelineName
+        $repoName    = $pipeline.repoName
+        $team        = $pipeline.team
+
+        Write-Host ""
+        Write-Host "➡️ Startar: $pipelineName (team: $team)"
+
+        # -------- Metadata (GET, tyst) --------
+        $pipelineInfoUrl =
+            $orgUrl + "/" + $projectName +
+            "/_apis/pipelines/" + $pipelineId +
+            "?api-version=7.1"
+
+        $pipelineInfo = Invoke-RestMethod `
+            -Method Get `
+            -Uri $pipelineInfoUrl `
+            -Headers $headers
+
+        # (pipelineInfo sparas för framtida bruk, men loggas inte)
+
+        # -------- Action (POST) --------
+        $runUrl =
+            $orgUrl + "/" + $projectName +
+            "/_apis/pipelines/" + $pipelineId +
+            "/runs?api-version=7.0"
+
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $runUrl `
+            -Headers $headers `
+            -Body "{}"
+
+        Write-Host "✅ Startad: $pipelineName – RunId $($response.id)"
+
+        # -------- Spårning --------
+        $startedPipelines += [PSCustomObject]@{
+            PipelineName = $pipelineName
+            RepoName     = $repoName
+            Team         = $team
+            RunId        = $response.id
+            WebUrl       = $response._links.web.href
+        }
+    }
+
+    # --------------------------------
+    # Sammanfattning
+    # --------------------------------
+    Write-Host ""
+    Write-Host "Sammanfattning – startade pipelines"
+    Write-Host "--------------------------------------"
+
+    foreach ($p in $startedPipelines) {
+        Write-Host "Pipeline: $($p.PipelineName)"
+        Write-Host "Repo:     $($p.RepoName)"
+        Write-Host "Team:     $($p.Team)"
+        Write-Host "RunId:    $($p.RunId)"
+        Write-Host "Url:      $($p.WebUrl)"
+        Write-Host ""
+    }
+
+    Write-Host "Orkestrering klar – alla pipelines kör nu oberoende av varandra"
+
+  displayName: "Trigger child pipelines (clean orchestration)"

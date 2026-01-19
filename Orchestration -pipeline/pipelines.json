@@ -1,14 +1,26 @@
 [
   {
-    "name": "repo-app-a",
-    "pipelineId": 10
+    "pipelineId": 10,
+    "pipelineName": "pipe-app-a",
+    "repoName": "repo-app-a",
+    "team": "Payments",
+    "environments": ["test", "prod"],
+    "enabled": true
   },
   {
-    "name": "repo-app-b",
-    "pipelineId": 11
+    "pipelineId": 11,
+    "pipelineName": "pipe-app-b",
+    "repoName": "repo-app-b",
+    "team": "Payments",
+    "environments": ["test", "prod"],
+    "enabled": false
   },
   {
-    "name": "repo-app-c",
-    "pipelineId": 12
+    "pipelineId": 12,
+    "pipelineName": "pipe-app-c",
+    "repoName": "repo-app-c",
+    "team": "Payments",
+    "environments": ["test", "prod"],
+    "enabled": true
   }
 ]
