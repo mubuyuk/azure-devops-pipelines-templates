@@ -96,6 +96,3 @@ steps:
         Write-Host ""
     }
 
-    Write-Host "Orkestrering klar – alla pipelines kör nu oberoende av varandra"
-
-  displayName: "Trigger child pipelines (clean orchestration)"
