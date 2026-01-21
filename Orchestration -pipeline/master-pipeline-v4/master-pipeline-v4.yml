@@ -1,0 +1,102 @@
+trigger: none
+
+parameters:
+- name: environment
+  type: string
+  displayName: "Which environment should be executed?"
+  default: test
+  values:
+  - dev
+  - test
+  - prod
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- pwsh: |
+    Write-Host "Master pipeline started"
+    Write-Host "Selected environment: ${{ parameters.environment }}"
+    Write-Host ""
+
+    # =========================================
+    # Azure DevOps context
+    # =========================================
+    $organization = "$(System.CollectionUri)"
+    $project      = "$(System.TeamProject)"
+
+    # OAuth token (must be enabled in pipeline settings)
+    $headers = @{
+        Authorization = "Bearer $(System.AccessToken)"
+        "Content-Type" = "application/json"
+    }
+
+    # =========================================
+    # Environment to Stage mapping
+    # =========================================
+    function Get-StagesForEnvironment {
+        param (
+            [string]$Environment
+        )
+
+        switch ($Environment) {
+            "dev"  { return @("D01") }
+            "test" { return @("T01") }
+            "prod" { return @("P01") }
+            default {
+                throw "Unknown environment: $Environment"
+            }
+        }
+    }
+
+    $environment = "${{ parameters.environment }}"
+    $stagesToRun = Get-StagesForEnvironment -Environment $environment
+
+    Write-Host "Stages to be executed: $($stagesToRun -join ', ')"
+    Write-Host ""
+
+    # =========================================
+    # Read pipelines.json
+    # =========================================
+    $pipelines = Get-Content "pipelines.json" | ConvertFrom-Json
+
+    foreach ($pipeline in $pipelines) {
+
+        if (-not $pipeline.enabled) {
+            Write-Host "Skipping $($pipeline.pipelineName) (enabled=false)"
+            continue
+        }
+
+        Write-Host "---------------------------------------------"
+        Write-Host "Triggering pipeline: $($pipeline.pipelineName)"
+        Write-Host "Repository: $($pipeline.repoName)"
+        Write-Host "Team: $($pipeline.team)"
+
+        $pipelineId = $pipeline.pipelineId
+
+        $url = "${organization}${project}/_apis/pipelines/$pipelineId/runs?api-version=7.0"
+
+        # =========================================
+        # Request body – key part
+        # =========================================
+        $body = @{
+            templateParameters = @{
+                runEnvironment = $environment
+            }
+        } | ConvertTo-Json -Depth 5
+
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $url `
+            -Headers $headers `
+            -Body $body
+
+        Write-Host "Pipeline successfully started"
+        Write-Host "RunId: $($response.id)"
+        Write-Host "Url:   $($response._links.web.href)"
+        Write-Host ""
+    }
+
+    Write-Host "Master pipeline completed – all pipelines have been triggered"
+
+  displayName: "Trigger child pipelines (environment to stage orchestration)"

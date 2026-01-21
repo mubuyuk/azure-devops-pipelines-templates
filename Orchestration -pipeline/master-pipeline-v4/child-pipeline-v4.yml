@@ -1,0 +1,52 @@
+trigger: none
+name: child-pipeline-demo-1
+
+parameters:
+- name: runEnvironment
+  type: string
+  default: dev
+  values:
+  - dev
+  - test
+  - prod
+
+stages:
+
+# ======================
+# DEV
+# ======================
+- stage: D01
+  displayName: DEV
+  condition: eq('${{ parameters.runEnvironment }}', 'dev')
+  jobs:
+  - job: Run_DEV
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - script: echo "Running DEV"
+
+# ======================
+# TEST
+# ======================
+- stage: T01
+  displayName: TEST
+  condition: eq('${{ parameters.runEnvironment }}', 'test')
+  jobs:
+  - job: Run_TEST
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - script: echo "Running TEST"
+
+# ======================
+# PROD
+# ======================
+- stage: P01
+  displayName: PROD
+  condition: eq('${{ parameters.runEnvironment }}', 'prod')
+  jobs:
+  - job: Run_PROD
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - script: echo "Running PROD"
